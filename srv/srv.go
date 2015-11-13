@@ -2,7 +2,7 @@
 package srv
 
 import (
-	"errors"
+	"io"
 	"net"
 
 	"github.com/kurin/tgt/packet"
@@ -53,5 +53,10 @@ func (c *Conn) Msg() *packet.Message {
 }
 
 func (c *Conn) Send(msg *packet.Message) error {
-	return errors.New("not implemented")
+	b := msg.Bytes()
+	if b == nil {
+		return io.ErrUnexpectedEOF
+	}
+	_, err := c.c.Write(b)
+	return err
 }

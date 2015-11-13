@@ -1,9 +1,7 @@
 package packet
 
-import "errors"
-
 // ParseKVText parses iSCSI key value data.
-func ParseKVText(txt []byte) (map[string]string, error) {
+func ParseKVText(txt []byte) map[string]string {
 	m := make(map[string]string)
 	var kv, sep int
 	var key string
@@ -12,8 +10,6 @@ func ParseKVText(txt []byte) (map[string]string, error) {
 			if key == "" {
 				sep = i
 				key = string(txt[kv:sep])
-			} else {
-				return nil, errors.New("error parsing keyvalue text")
 			}
 			continue
 		}
@@ -23,5 +19,5 @@ func ParseKVText(txt []byte) (map[string]string, error) {
 			kv = i + 1
 		}
 	}
-	return m, nil
+	return m
 }
