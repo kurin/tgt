@@ -88,6 +88,10 @@ type Message struct {
 	tsih     uint16
 }
 
+func (m *Message) Data() []byte {
+	return m.data[:m.dataLen]
+}
+
 func (m *Message) String() string {
 	var s []string
 	s = append(s, fmt.Sprintf("Op: %v", m.opCode))
@@ -170,4 +174,12 @@ func parseHeader(data []byte) (*Message, error) {
 		m.expStatSN = uint32(parseUint(data[28:32]))
 	}
 	return m, nil
+}
+
+func (m *Message) IsLogon() bool {
+	return m.opCode == opLoginReq
+}
+
+func (m *Message) IsTerminal() bool {
+	return m.final
 }
