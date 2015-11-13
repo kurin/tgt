@@ -5,6 +5,7 @@ package packet
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 type OpCode int
@@ -92,13 +93,33 @@ type Message struct {
 func (m *Message) Bytes() []byte {
 	switch m.OpCode {
 	case OpLoginResp:
-		return m.loginBytes()
+		return m.loginRespBytes()
 	}
 	return nil
 }
 
 func (m *Message) String() string {
-	return m.OpCode.String()
+	var s []string
+	s = append(s, fmt.Sprintf("Op: %v", m.OpCode))
+	s = append(s, fmt.Sprintf("Final = %v", m.Final))
+	s = append(s, fmt.Sprintf("Immediate = %v", m.Immediate))
+	s = append(s, fmt.Sprintf("Data Segment Length = %d", m.DataLen))
+	s = append(s, fmt.Sprintf("Task Tag = %x", m.TaskTag))
+	switch m.OpCode {
+	case OpLoginReq:
+		s = append(s, fmt.Sprintf("Transit = %v", m.Transit))
+		s = append(s, fmt.Sprintf("Continue = %v", m.Cont))
+		s = append(s, fmt.Sprintf("Current Stage = %v", m.CSG))
+		s = append(s, fmt.Sprintf("Next Stage = %v", m.NSG))
+	case OpLoginResp:
+		s = append(s, fmt.Sprintf("Transit = %v", m.Transit))
+		s = append(s, fmt.Sprintf("Continue = %v", m.Cont))
+		s = append(s, fmt.Sprintf("Current Stage = %v", m.CSG))
+		s = append(s, fmt.Sprintf("Next Stage = %v", m.NSG))
+		s = append(s, fmt.Sprintf("Status Class = %d", m.StatusClass))
+		s = append(s, fmt.Sprintf("Status Detail = %d", m.StatusDetail))
+	}
+	return strings.Join(s, "\n")
 }
 
 func Next(r io.Reader) (*Message, error) {
@@ -145,7 +166,7 @@ func marshalUint64(i uint64) []byte {
 }
 
 func parseHeader(data []byte) (*Message, error) {
-	if len(data) < 48 {
+	if len(data) != 48 {
 		return nil, fmt.Errorf("garbled header")
 	}
 	// TODO: sync.Pool
@@ -171,6 +192,20 @@ func parseHeader(data []byte) (*Message, error) {
 		m.ConnID = uint16(parseUint(data[20:22]))
 		m.CmdSN = uint32(parseUint(data[24:28]))
 		m.ExpStatSN = uint32(parseUint(data[28:32]))
+	case OpLoginResp:
+		m.Transit = m.Final
+		m.Cont = data[1]&0x40 == 0x40
+		if m.Cont && m.Transit {
+			// rfc7143 11.12.2
+			return nil, fmt.Errorf("transit and continue bits set in same login request")
+		}
+		m.CSG = Stage(data[1]&0xc) >> 2
+		m.NSG = Stage(data[1] & 0x3)
+		m.StatSN = uint32(parseUint(data[24:28]))
+		m.ExpCmdSN = uint32(parseUint(data[28:32]))
+		m.MaxCmdSN = uint32(parseUint(data[32:36]))
+		m.StatusClass = uint8(data[36])
+		m.StatusDetail = uint8(data[37])
 	}
 	return m, nil
 }

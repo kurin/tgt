@@ -21,3 +21,14 @@ func ParseKVText(txt []byte) map[string]string {
 	}
 	return m
 }
+
+func MarshalKVText(kv map[string]string) []byte {
+	var data []byte
+	for k, v := range kv {
+		data = append(data, []byte(k)...)
+		data = append(data, '=')
+		data = append(data, []byte(v)...)
+		data = append(data, 0)
+	}
+	return data
+}

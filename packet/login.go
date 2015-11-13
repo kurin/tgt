@@ -2,9 +2,10 @@ package packet
 
 import "bytes"
 
-func (m *Message) loginBytes() []byte {
+func (m *Message) loginRespBytes() []byte {
 	// rfc7143 11.13
 	buf := &bytes.Buffer{}
+	// byte 0
 	buf.WriteByte(byte(OpLoginResp))
 	var b byte
 	if m.Transit {
@@ -15,6 +16,7 @@ func (m *Message) loginBytes() []byte {
 	}
 	b |= byte(m.CSG&0xff) << 2
 	b |= byte(m.NSG & 0xff)
+	// byte 1
 	buf.WriteByte(b)
 
 	b = 0
@@ -38,6 +40,11 @@ func (m *Message) loginBytes() []byte {
 	buf.WriteByte(b) // "reserved"
 	var bs [8]byte
 	buf.Write(bs[:])
+	rd := m.RawData
+	for len(rd)%4 != 0 {
+		rd = append(rd, 0)
+	}
+	buf.Write(rd)
 	return buf.Bytes()
 }
 
