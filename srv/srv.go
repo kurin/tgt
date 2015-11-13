@@ -1,5 +1,5 @@
-// Package net handles individual connections in an iSCSI session.
-package net
+// Package srv handles individual connections in an iSCSI session.
+package srv
 
 import (
 	"errors"
