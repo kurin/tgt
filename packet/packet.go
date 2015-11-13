@@ -5,56 +5,55 @@ package packet
 import (
 	"fmt"
 	"io"
-	"strings"
 )
 
-type opCode int
+type OpCode int
 
 const (
 	// Defined on the initiator.
-	opNoopOut     opCode = 0x00
-	opSCSICmd            = 0x01
-	opSCSITaskReq        = 0x02
-	opLoginReq           = 0x03
-	opTextReq            = 0x04
-	opSCSIOut            = 0x05
-	opLogoutReq          = 0x06
-	opSNACKReq           = 0x10
+	OpNoopOut     OpCode = 0x00
+	OpSCSICmd            = 0x01
+	OpSCSITaskReq        = 0x02
+	OpLoginReq           = 0x03
+	OpTextReq            = 0x04
+	OpSCSIOut            = 0x05
+	OpLogoutReq          = 0x06
+	OpSNACKReq           = 0x10
 	// Defined on the target.
-	opNoopIn       opCode = 0x20
-	opSCSIResp            = 0x21
-	opSCSITaskResp        = 0x22
-	opLoginResp           = 0x23
-	opTextResp            = 0x24
-	opSCSIIn              = 0x25
-	opLogoutResp          = 0x26
-	opReady               = 0x31
-	opAsync               = 0x32
-	opReject              = 0x3f
+	OpNoopIn       OpCode = 0x20
+	OpSCSIResp            = 0x21
+	OpSCSITaskResp        = 0x22
+	OpLoginResp           = 0x23
+	OpTextResp            = 0x24
+	OpSCSIIn              = 0x25
+	OpLogoutResp          = 0x26
+	OpReady               = 0x31
+	OpAsync               = 0x32
+	OpReject              = 0x3f
 )
 
-var opCodeMap = map[opCode]string{
-	opNoopOut:      "NOP-Out",
-	opSCSICmd:      "SCSI Command",
-	opSCSITaskReq:  "SCSI Task Management FunctionRequest",
-	opLoginReq:     "Login Request",
-	opTextReq:      "Text Request",
-	opSCSIOut:      "SCSI Data-Out (write)",
-	opLogoutReq:    "Logout Request",
-	opSNACKReq:     "SNACK Request",
-	opNoopIn:       "NOP-In",
-	opSCSIResp:     "SCSI Response",
-	opSCSITaskResp: "SCSI Task Management Function Response",
-	opLoginResp:    "Login Response",
-	opTextResp:     "Text Response",
-	opSCSIIn:       "SCSI Data-In (read)",
-	opLogoutResp:   "Logout Response",
-	opReady:        "Ready To Transfer (R2T)",
-	opAsync:        "Asynchronous Message",
-	opReject:       "Reject",
+var opCodeMap = map[OpCode]string{
+	OpNoopOut:      "NOP-Out",
+	OpSCSICmd:      "SCSI Command",
+	OpSCSITaskReq:  "SCSI Task Management FunctionRequest",
+	OpLoginReq:     "Login Request",
+	OpTextReq:      "Text Request",
+	OpSCSIOut:      "SCSI Data-Out (write)",
+	OpLogoutReq:    "Logout Request",
+	OpSNACKReq:     "SNACK Request",
+	OpNoopIn:       "NOP-In",
+	OpSCSIResp:     "SCSI Response",
+	OpSCSITaskResp: "SCSI Task Management Function Response",
+	OpLoginResp:    "Login Response",
+	OpTextResp:     "Text Response",
+	OpSCSIIn:       "SCSI Data-In (read)",
+	OpLogoutResp:   "Logout Response",
+	OpReady:        "Ready To Transfer (R2T)",
+	OpAsync:        "Asynchronous Message",
+	OpReject:       "Reject",
 }
 
-func (c opCode) String() string {
+func (c OpCode) String() string {
 	s := opCodeMap[c]
 	if s == "" {
 		s = fmt.Sprintf("Unknown Code: %x", int(c))
@@ -63,56 +62,47 @@ func (c opCode) String() string {
 }
 
 type Message struct {
-	opCode    opCode
-	header    []byte
-	final     bool
-	immediate bool
-	dataLen   int
-	data      []byte
-	taskTag   uint32
-	ahsLen    int
+	OpCode             OpCode
+	RawHeader          []byte
+	DataLen            int
+	RawData            []byte
+	Final              bool
+	Immediate          bool
+	TaskTag            uint32
+	ExpCmdSN, MaxCmdSN uint32
 
-	connID    uint16
-	cmdSN     uint32
-	expStatSN uint32
+	ConnID    uint16 // Connection ID.
+	CmdSN     uint32 // Command serial number.
+	ExpStatSN uint32 // Expected status serial.
 
-	// valid when opCode == opSCSICmd
-	read, write bool
-	lun         int
+	Read, Write bool
+	LUN         int
+	Transit     bool   // Transit bit.
+	Cont        bool   // Continue bit.
+	CSG, NSG    Stage  // Current Stage, Next Stage.
+	ISID        uint64 // Initiator part of the SSID.
+	TSIH        uint16 // Target-assigned Session Identifying Handle.
+	StatSN      uint32 // Status serial number.
 
-	// valid for opLoginReq
-	transit  bool
-	cont     bool
-	csg, nsg int
-	isid     uint64
-	tsih     uint16
+	// For login response.
+	StatusClass  uint8
+	StatusDetail uint8
 }
 
-func (m *Message) Data() []byte {
-	return m.data[:m.dataLen]
+func (m *Message) Bytes() []byte {
+	switch m.OpCode {
+	case OpLoginResp:
+		return m.loginBytes()
+	}
+	return nil
 }
 
 func (m *Message) String() string {
-	var s []string
-	s = append(s, fmt.Sprintf("Op: %v", m.opCode))
-	s = append(s, fmt.Sprintf("Final = %v", m.final))
-	s = append(s, fmt.Sprintf("Immediate = %v", m.immediate))
-	s = append(s, fmt.Sprintf("Total AHS Length = %d", m.ahsLen))
-	s = append(s, fmt.Sprintf("Data Segment Length = %d", m.dataLen))
-	s = append(s, fmt.Sprintf("Task Tag = %x", m.taskTag))
-	switch m.opCode {
-	case opSCSICmd:
-		s = append(s, fmt.Sprintf("LUN = %d", m.lun))
-	case opLoginReq:
-		s = append(s, fmt.Sprintf("Transit = %v", m.transit))
-		s = append(s, fmt.Sprintf("Continue = %v", m.cont))
-		s = append(s, fmt.Sprintf("Connection ID = %x", m.connID))
-	}
-	return strings.Join(s, "\n")
+	return m.OpCode.String()
 }
 
 func Next(r io.Reader) (*Message, error) {
-	buf := make([]byte, 48) // sync.Pool
+	buf := make([]byte, 48) // TODO: sync.Pool
 	if _, err := io.ReadFull(r, buf); err != nil {
 		return nil, err
 	}
@@ -120,9 +110,9 @@ func Next(r io.Reader) (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	m.header = buf
-	if m.dataLen > 0 {
-		dl := m.dataLen
+	m.RawHeader = buf
+	if m.DataLen > 0 {
+		dl := m.DataLen
 		for dl%4 > 0 {
 			dl++
 		}
@@ -130,7 +120,7 @@ func Next(r io.Reader) (*Message, error) {
 		if _, err := io.ReadFull(r, data); err != nil {
 			return nil, err
 		}
-		m.data = data
+		m.RawData = data
 	}
 	return m, nil
 }
@@ -145,41 +135,42 @@ func parseUint(data []byte) uint64 {
 	return out
 }
 
+func marshalUint64(i uint64) []byte {
+	var data []byte
+	for j := 0; j < 8; j++ {
+		b := byte(i >> uint(8*(7-j)) & 0xff)
+		data = append(data, b)
+	}
+	return data
+}
+
 func parseHeader(data []byte) (*Message, error) {
 	if len(data) < 48 {
 		return nil, fmt.Errorf("garbled header")
 	}
 	// TODO: sync.Pool
 	m := &Message{}
-	m.immediate = 0x40&data[0] == 0x40
-	m.opCode = opCode(data[0] & 0x3f)
-	m.final = 0x80&data[1] == 0x80
-	m.ahsLen = int(data[4]) * 4
-	m.dataLen = int(parseUint(data[5:8]))
-	m.taskTag = uint32(parseUint(data[16:20]))
-	switch m.opCode {
-	case opSCSICmd:
-		m.lun = int(parseUint(data[8:16]))
-	case opLoginReq:
-		m.transit = m.final
-		m.cont = data[1]&0x40 == 0x40
-		if m.cont && m.transit {
+	m.Immediate = 0x40&data[0] == 0x40
+	m.OpCode = OpCode(data[0] & 0x3f)
+	m.Final = 0x80&data[1] == 0x80
+	//m.ahsLen = int(data[4]) * 4
+	m.DataLen = int(parseUint(data[5:8]))
+	m.TaskTag = uint32(parseUint(data[16:20]))
+	switch m.OpCode {
+	case OpSCSICmd:
+		m.LUN = int(parseUint(data[8:16]))
+	case OpLoginReq:
+		m.Transit = m.Final
+		m.Cont = data[1]&0x40 == 0x40
+		if m.Cont && m.Transit {
 			// rfc7143 11.12.2
 			return nil, fmt.Errorf("transit and continue bits set in same login request")
 		}
-		m.csg = int(data[1]&0xc) >> 2
-		m.nsg = int(data[1] & 0x3)
-		m.connID = uint16(parseUint(data[20:22]))
-		m.cmdSN = uint32(parseUint(data[24:28]))
-		m.expStatSN = uint32(parseUint(data[28:32]))
+		m.CSG = Stage(data[1]&0xc) >> 2
+		m.NSG = Stage(data[1] & 0x3)
+		m.ConnID = uint16(parseUint(data[20:22]))
+		m.CmdSN = uint32(parseUint(data[24:28]))
+		m.ExpStatSN = uint32(parseUint(data[28:32]))
 	}
 	return m, nil
-}
-
-func (m *Message) IsLogon() bool {
-	return m.opCode == opLoginReq
-}
-
-func (m *Message) IsTerminal() bool {
-	return m.final
 }
