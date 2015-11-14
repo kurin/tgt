@@ -3,57 +3,80 @@
 package session
 
 import (
-	"sync"
+	"crypto/rand"
+	"fmt"
 
+	"github.com/kurin/tgt/packet"
 	"github.com/kurin/tgt/srv"
+	"github.com/kurin/tgt/target"
 )
 
-type Pool struct {
-	mux      sync.Mutex
-	sessions map[uint16]*SCSI
+// Session is an iSCSI session.
+type Session struct {
+	ISID uint64
+	TSIH uint16
+
+	target   *target.Target
+	conns    map[uint16]*srv.Conn
+	tasks    map[uint32]srv.Handler
+	messages chan *packet.Message
 }
 
-func NewPool() *Pool {
-	return &Pool{
-		sessions: make(map[uint16]*SCSI),
+// New creates a new session.
+func New() (*Session, error) {
+	var tsih uint16
+	b := make([]byte, 2)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
 	}
+	tsih += uint16(b[0]) << 8
+	tsih += uint16(b[1])
+
+	return &Session{
+		TSIH:     tsih,
+		tasks:    make(map[uint32]srv.Handler),
+		conns:    make(map[uint16]*srv.Conn),
+		messages: make(chan *packet.Message),
+	}, nil
 }
 
-type SCSI struct {
-	conns []*srv.Conn
+// AddConn adds a connection to the session.
+func (s *Session) AddConn(conn *srv.Conn) {
+	s.conns[conn.ID] = conn
+	go func() {
+		for conn.Recv() {
+			s.messages <- conn.Msg()
+		}
+	}()
 }
 
-// Owner takes posession of the iSCSI connection.
-type Owner interface {
-	// Own passes the iSCSI connection to the owner.  The function blocks while
-	// the owner has it, and no other callers should use the connection until Own
-	// returns.  If Own returns with no error, then the caller is responsible for
-	// the iSCSI connection again.
-	Own(*srv.Conn) error
+func (s *Session) Recv() *packet.Message {
+	return <-s.messages
 }
 
-// Authenticator is an Owner that retains and exposes certain connection
-// variables after authentication is complete.
-type Authenticator interface {
-	Owner
-	TSIH() uint16
-	ConnID() uint16
-}
-
-// Assign takes a new connection and assigns it to a SCSI session in the
-// pool.  If no session exists, a new one is created.
-func (p Pool) Assign(conn *srv.Conn, auth Authenticator) error {
-	if err := auth.Own(conn); err != nil {
-		return err
+// Send sends a message to the initiator on the appropriate connection.
+func (s *Session) Send(m *packet.Message) error {
+	conn, ok := s.conns[m.ConnID]
+	if !ok {
+		return fmt.Errorf("session: cannot send message: no such connection %x", m.ConnID)
 	}
-	// TODO: measure performance and try a readlock here
-	p.mux.Lock()
-	defer p.mux.Unlock()
-	scsi, ok := p.sessions[auth.TSIH()]
+	return conn.Send(m)
+}
+
+// Dispatch receives iSCSI PDUs and passes them to the appropriate task
+// handlers.
+func (s *Session) Dispatch(m *packet.Message) (*packet.Message, error) {
+	h, ok := s.tasks[m.TaskTag]
 	if ok {
-		scsi.conns = append(scsi.conns, conn)
-		return nil
+		return h.Handle(m)
 	}
-	p.sessions[auth.TSIH()] = &SCSI{}
-	return nil
+
+	hf, ok := s.target.TaskMap[m.OpCode]
+	if !ok {
+		return nil, fmt.Errorf("session: iSCSI option %q unsupported", m.OpCode)
+	}
+
+	h = hf()
+	s.tasks[m.TaskTag] = h
+	return h.Handle(m)
 }

@@ -2,6 +2,8 @@
 package srv
 
 import (
+	"bytes"
+	"fmt"
 	"io"
 	"net"
 
@@ -27,9 +29,12 @@ func (c Collector) Close() error {
 }
 
 type Conn struct {
-	c   net.Conn
-	err error
-	msg *packet.Message
+	ID uint16
+
+	c    net.Conn
+	err  error
+	msg  *packet.Message
+	auth bool
 }
 
 func (c *Conn) Close() error {
@@ -41,6 +46,12 @@ func (c *Conn) Recv() bool {
 		return false
 	}
 	c.msg, c.err = packet.Next(c.c)
+	///
+	if c.err == nil {
+		fmt.Println("-----------------------")
+		fmt.Println(c.msg)
+	}
+	///
 	return c.err == nil
 }
 
@@ -54,9 +65,26 @@ func (c *Conn) Msg() *packet.Message {
 
 func (c *Conn) Send(msg *packet.Message) error {
 	b := msg.Bytes()
+	///
+	m, errr := packet.Next(bytes.NewReader(b))
+	if errr != nil {
+		return fmt.Errorf("rawr: %v", errr)
+	}
+	fmt.Println("******************")
+	fmt.Println(m)
+	///
 	if b == nil {
 		return io.ErrUnexpectedEOF
 	}
 	_, err := c.c.Write(b)
 	return err
+}
+
+// Handler receives iSCSI messages and, optionally, returns an iSCSI response.
+type Handler interface {
+	// Handle takes a single iSCSI PDU and composes an appropriate response.
+	// Further messages with the same Task Tag will be mapped to the same
+	// handler.
+	Handle(m *packet.Message) (*packet.Message, error)
+	Close() error
 }

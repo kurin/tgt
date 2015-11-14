@@ -122,6 +122,14 @@ func (m *Message) String() string {
 	return strings.Join(s, "\n")
 }
 
+// Response composes a reply to the given message with the appropriate bits set.
+func (m *Message) Response(r *Message) {
+	r.TaskTag = m.TaskTag
+	r.ConnID = m.ConnID
+	r.ISID = m.ISID
+	r.TSIH = m.TSIH
+}
+
 func Next(r io.Reader) (*Message, error) {
 	buf := make([]byte, 48) // TODO: sync.Pool
 	if _, err := io.ReadFull(r, buf); err != nil {
