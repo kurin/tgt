@@ -77,7 +77,7 @@ type Message struct {
 	ExpStatSN uint32 // Expected status serial.
 
 	Read, Write bool
-	LUN         int
+	LUN         uint64
 	Transit     bool   // Transit bit.
 	Cont        bool   // Continue bit.
 	CSG, NSG    Stage  // Current Stage, Next Stage.
@@ -187,7 +187,11 @@ func parseHeader(data []byte) (*Message, error) {
 	m.TaskTag = uint32(parseUint(data[16:20]))
 	switch m.OpCode {
 	case OpSCSICmd:
-		m.LUN = int(parseUint(data[8:16]))
+		m.LUN = parseUint(data[8:16])
+		m.ExpectedDataLen = uint32(parseUint(data[20:24]))
+		m.CmdSN = uint32(parseUint(data[24:28]))
+		m.Read = data[1]&0x40 == 0x40
+		m.Write = data[1]&0x20 == 0x20
 	case OpLoginReq:
 		m.Transit = m.Final
 		m.Cont = data[1]&0x40 == 0x40
