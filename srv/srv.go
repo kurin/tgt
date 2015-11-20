@@ -66,6 +66,7 @@ func (c *Conn) Msg() *packet.Message {
 func (c *Conn) Send(msg *packet.Message) error {
 	b := msg.Bytes()
 	///
+	fmt.Printf("=== outgoing msglen: %d", len(b))
 	m, errr := packet.Next(bytes.NewReader(b))
 	if errr != nil {
 		return fmt.Errorf("rawr: %v", errr)

@@ -71,6 +71,7 @@ type Message struct {
 	Immediate          bool
 	TaskTag            uint32
 	ExpCmdSN, MaxCmdSN uint32
+	AHSLen             int
 
 	ConnID    uint16 // Connection ID.
 	CmdSN     uint32 // Command serial number.
@@ -88,12 +89,20 @@ type Message struct {
 	// For login response.
 	StatusClass  uint8
 	StatusDetail uint8
+
+	// SCSI commands
+	ExpectedDataLen uint32
+	CDB             []byte
+	Status          Status
+	SCSIResponse    Response
 }
 
 func (m *Message) Bytes() []byte {
 	switch m.OpCode {
 	case OpLoginResp:
 		return m.loginRespBytes()
+	case OpSCSIResp:
+		return m.scsiCmdRespBytes()
 	}
 	return nil
 }
@@ -105,6 +114,7 @@ func (m *Message) String() string {
 	s = append(s, fmt.Sprintf("Immediate = %v", m.Immediate))
 	s = append(s, fmt.Sprintf("Data Segment Length = %d", m.DataLen))
 	s = append(s, fmt.Sprintf("Task Tag = %x", m.TaskTag))
+	s = append(s, fmt.Sprintf("AHS Length = %d", m.AHSLen))
 	switch m.OpCode {
 	case OpLoginReq:
 		s = append(s, fmt.Sprintf("Transit = %v", m.Transit))
@@ -118,6 +128,13 @@ func (m *Message) String() string {
 		s = append(s, fmt.Sprintf("Next Stage = %v", m.NSG))
 		s = append(s, fmt.Sprintf("Status Class = %d", m.StatusClass))
 		s = append(s, fmt.Sprintf("Status Detail = %d", m.StatusDetail))
+	case OpSCSICmd:
+		s = append(s, fmt.Sprintf("LUN = %d", m.LUN))
+		s = append(s, fmt.Sprintf("ExpectedDataLen = %d", m.ExpectedDataLen))
+		s = append(s, fmt.Sprintf("CmdSN = %d", m.CmdSN))
+		s = append(s, fmt.Sprintf("Read = %v", m.Read))
+		s = append(s, fmt.Sprintf("Write = %v", m.Write))
+		s = append(s, fmt.Sprintf("CDB = %x", m.CDB))
 	}
 	return strings.Join(s, "\n")
 }
@@ -182,7 +199,7 @@ func parseHeader(data []byte) (*Message, error) {
 	m.Immediate = 0x40&data[0] == 0x40
 	m.OpCode = OpCode(data[0] & 0x3f)
 	m.Final = 0x80&data[1] == 0x80
-	//m.ahsLen = int(data[4]) * 4
+	m.AHSLen = int(data[4]) * 4
 	m.DataLen = int(parseUint(data[5:8]))
 	m.TaskTag = uint32(parseUint(data[16:20]))
 	switch m.OpCode {
@@ -192,6 +209,7 @@ func parseHeader(data []byte) (*Message, error) {
 		m.CmdSN = uint32(parseUint(data[24:28]))
 		m.Read = data[1]&0x40 == 0x40
 		m.Write = data[1]&0x20 == 0x20
+		m.CDB = data[32:48]
 	case OpLoginReq:
 		m.Transit = m.Final
 		m.Cont = data[1]&0x40 == 0x40
