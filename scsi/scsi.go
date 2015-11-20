@@ -22,3 +22,20 @@ func (h *Handler) Handle(m *packet.Message) (*packet.Message, error) {
 }
 
 func (h *Handler) Close() error { return nil }
+
+type cdb struct {
+	op opCode
+}
+
+type opCode byte
+
+const (
+	opTestUnitReady  opCode = 0x00
+	opReadCapacity10        = 0x25
+)
+
+func parseCDB(data []byte) (*cdb, error) {
+	return &cdb{
+		op: opCode(data[0]),
+	}, nil
+}
