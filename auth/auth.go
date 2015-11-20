@@ -13,10 +13,16 @@ func NewAllowAll() srv.Handler { return &AllowAll{} }
 func (a *AllowAll) Handle(m *packet.Message) (*packet.Message, error) {
 	if !m.Cont && m.NSG == packet.FullFeaturePhase {
 		resp := &packet.Message{
-			OpCode:  packet.OpLoginResp,
-			Transit: true,
-			NSG:     packet.FullFeaturePhase,
-			StatSN:  1,
+			OpCode:   packet.OpLoginResp,
+			Transit:  true,
+			NSG:      packet.FullFeaturePhase,
+			StatSN:   m.ExpStatSN,
+			ExpCmdSN: m.CmdSN,
+			MaxCmdSN: m.CmdSN,
+			RawData: packet.MarshalKVText(map[string]string{
+				"HeaderDigest": "None",
+				"DataDigest":   "None",
+			}),
 		}
 		m.Response(resp)
 		return resp, nil

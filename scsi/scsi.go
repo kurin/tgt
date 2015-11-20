@@ -12,8 +12,10 @@ type Handler struct{}
 
 func (h *Handler) Handle(m *packet.Message) (*packet.Message, error) {
 	resp := &packet.Message{
-		OpCode: packet.OpSCSIResp,
-		StatSN: m.ExpStatSN,
+		OpCode:   packet.OpSCSIResp,
+		StatSN:   m.ExpStatSN,
+		ExpCmdSN: m.CmdSN + 1,
+		MaxCmdSN: m.CmdSN + 11,
 	}
 	m.Response(resp)
 	return resp, nil

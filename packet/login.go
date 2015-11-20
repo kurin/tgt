@@ -31,9 +31,9 @@ func (m *Message) loginRespBytes() []byte {
 	buf.WriteByte(b)
 	buf.WriteByte(b)
 	buf.WriteByte(b) // "reserved"
-	buf.Write(marshalUint64(uint64(m.StatSN))[:4])
-	buf.Write(marshalUint64(uint64(m.ExpCmdSN))[:4])
-	buf.Write(marshalUint64(uint64(m.MaxCmdSN))[:4])
+	buf.Write(marshalUint64(uint64(m.StatSN))[4:])
+	buf.Write(marshalUint64(uint64(m.ExpCmdSN))[4:])
+	buf.Write(marshalUint64(uint64(m.MaxCmdSN))[4:])
 	buf.WriteByte(byte(m.StatusClass))
 	buf.WriteByte(byte(m.StatusDetail))
 	buf.WriteByte(b)

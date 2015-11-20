@@ -56,6 +56,8 @@ func (s *Session) Recv() *packet.Message {
 
 // Send sends a message to the initiator on the appropriate connection.
 func (s *Session) Send(m *packet.Message) error {
+	m.ISID = s.ISID
+	m.TSIH = s.TSIH
 	conn, ok := s.conns[m.ConnID]
 	if !ok {
 		return fmt.Errorf("session: cannot send message: no such connection %x", m.ConnID)

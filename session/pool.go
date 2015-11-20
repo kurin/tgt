@@ -51,6 +51,7 @@ func (p *Pool) Accept(conn *srv.Conn) (*Session, error) {
 		return nil, err
 	}
 	if s.target == nil {
+		s.ISID = m.ISID
 		txt := m.RawData[:m.DataLen]
 		params := packet.ParseKVText(txt)
 		tname, ok := params["TargetName"]

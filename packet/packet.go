@@ -117,11 +117,13 @@ func (m *Message) String() string {
 	s = append(s, fmt.Sprintf("AHS Length = %d", m.AHSLen))
 	switch m.OpCode {
 	case OpLoginReq:
+		s = append(s, fmt.Sprintf("ISID = %x", m.ISID))
 		s = append(s, fmt.Sprintf("Transit = %v", m.Transit))
 		s = append(s, fmt.Sprintf("Continue = %v", m.Cont))
 		s = append(s, fmt.Sprintf("Current Stage = %v", m.CSG))
 		s = append(s, fmt.Sprintf("Next Stage = %v", m.NSG))
 	case OpLoginResp:
+		s = append(s, fmt.Sprintf("ISID = %x", m.ISID))
 		s = append(s, fmt.Sprintf("Transit = %v", m.Transit))
 		s = append(s, fmt.Sprintf("Continue = %v", m.Cont))
 		s = append(s, fmt.Sprintf("Current Stage = %v", m.CSG))
@@ -132,9 +134,14 @@ func (m *Message) String() string {
 		s = append(s, fmt.Sprintf("LUN = %d", m.LUN))
 		s = append(s, fmt.Sprintf("ExpectedDataLen = %d", m.ExpectedDataLen))
 		s = append(s, fmt.Sprintf("CmdSN = %d", m.CmdSN))
+		s = append(s, fmt.Sprintf("ExpStatSN = %d", m.ExpStatSN))
 		s = append(s, fmt.Sprintf("Read = %v", m.Read))
 		s = append(s, fmt.Sprintf("Write = %v", m.Write))
 		s = append(s, fmt.Sprintf("CDB = %x", m.CDB))
+	case OpSCSIResp:
+		s = append(s, fmt.Sprintf("StatSN = %d", m.StatSN))
+		s = append(s, fmt.Sprintf("ExpCmdSN = %d", m.ExpCmdSN))
+		s = append(s, fmt.Sprintf("MaxCmdSN = %d", m.MaxCmdSN))
 	}
 	return strings.Join(s, "\n")
 }
@@ -144,7 +151,6 @@ func (m *Message) Response(r *Message) {
 	r.TaskTag = m.TaskTag
 	r.ConnID = m.ConnID
 	r.ISID = m.ISID
-	r.TSIH = m.TSIH
 }
 
 func Next(r io.Reader) (*Message, error) {
@@ -210,6 +216,8 @@ func parseHeader(data []byte) (*Message, error) {
 		m.Read = data[1]&0x40 == 0x40
 		m.Write = data[1]&0x20 == 0x20
 		m.CDB = data[32:48]
+		m.ExpStatSN = uint32(parseUint(data[28:32]))
+	case OpSCSIResp:
 	case OpLoginReq:
 		m.Transit = m.Final
 		m.Cont = data[1]&0x40 == 0x40
@@ -219,6 +227,8 @@ func parseHeader(data []byte) (*Message, error) {
 		}
 		m.CSG = Stage(data[1]&0xc) >> 2
 		m.NSG = Stage(data[1] & 0x3)
+		m.ISID = uint64(parseUint(data[8:14]))
+		m.TSIH = uint16(parseUint(data[14:16]))
 		m.ConnID = uint16(parseUint(data[20:22]))
 		m.CmdSN = uint32(parseUint(data[24:28]))
 		m.ExpStatSN = uint32(parseUint(data[28:32]))

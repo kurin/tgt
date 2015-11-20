@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	l, err := net.Listen("tcp", ":2222")
+	l, err := net.Listen("tcp", ":3260")
 	if err != nil {
 		log.Fatal(err)
 	}
