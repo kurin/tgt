@@ -3,49 +3,40 @@ package main
 import (
 	"log"
 	"net"
-
-	"github.com/kurin/tgt/auth"
-	"github.com/kurin/tgt/packet"
-	"github.com/kurin/tgt/scsi"
-	"github.com/kurin/tgt/session"
-	"github.com/kurin/tgt/srv"
-	"github.com/kurin/tgt/target"
 )
 
+type FakeSCSI struct{}
+
 func main() {
+	lun := &scsi.LUN{
+		// LUN specific options
+		Device: &FakeSCSI{},
+	}
+
+	t := &scsi.Target{
+		// Target-specific options
+		LUNS: []*scsi.LUN{
+			lun, // lun 0
+		},
+	}
+
+	pg := &scsi.PortalGroup{
+		// Portal-Group specific options, like auth
+		Targets: []*scsi.Target{
+			t,
+		},
+	}
+
 	l, err := net.Listen("tcp", ":3260")
 	if err != nil {
 		log.Fatal(err)
 	}
-	c := &srv.Collector{
-		Listener: l,
-	}
 
-	pool := &session.Pool{}
-	pool.RegisterTarget(&target.Target{
-		Name: "a",
-		TaskMap: map[packet.OpCode]func() srv.Handler{
-			packet.OpLoginReq: auth.NewAllowAll,
-			packet.OpSCSICmd:  scsi.New,
-		},
-	})
+	pg.AddListener(l)
 
-	conn, err := c.Collect()
-	if err != nil {
-		log.Fatal(err)
-	}
-	s, err := pool.Accept(conn)
-	if err != nil {
-		log.Fatal(err)
-	}
 	for {
-		m := s.Recv()
-		resp, err := s.Dispatch(m)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if err := s.Send(resp); err != nil {
-			log.Fatal(err)
-		}
+		conn, err := pg.Accept()
+		session, err := scsi.Attach(conn)
+		go session.Run()
 	}
 }
