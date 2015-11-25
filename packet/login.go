@@ -23,17 +23,17 @@ func (m *Message) loginRespBytes() []byte {
 	buf.WriteByte(b)                                     // version-max
 	buf.WriteByte(b)                                     // version-active
 	buf.WriteByte(b)                                     // ahsLen
-	buf.Write(marshalUint64(uint64(len(m.RawData)))[5:]) // data segment length, no padding
-	buf.Write(marshalUint64(m.ISID)[2:])
-	buf.Write(marshalUint64(uint64(m.TSIH))[6:])
-	buf.Write(marshalUint64(uint64(m.TaskTag))[4:])
+	buf.Write(MarshalUint64(uint64(len(m.RawData)))[5:]) // data segment length, no padding
+	buf.Write(MarshalUint64(m.ISID)[2:])
+	buf.Write(MarshalUint64(uint64(m.TSIH))[6:])
+	buf.Write(MarshalUint64(uint64(m.TaskTag))[4:])
 	buf.WriteByte(b)
 	buf.WriteByte(b)
 	buf.WriteByte(b)
 	buf.WriteByte(b) // "reserved"
-	buf.Write(marshalUint64(uint64(m.StatSN))[4:])
-	buf.Write(marshalUint64(uint64(m.ExpCmdSN))[4:])
-	buf.Write(marshalUint64(uint64(m.MaxCmdSN))[4:])
+	buf.Write(MarshalUint64(uint64(m.StatSN))[4:])
+	buf.Write(MarshalUint64(uint64(m.ExpCmdSN))[4:])
+	buf.Write(MarshalUint64(uint64(m.MaxCmdSN))[4:])
 	buf.WriteByte(byte(m.StatusClass))
 	buf.WriteByte(byte(m.StatusDetail))
 	buf.WriteByte(b)

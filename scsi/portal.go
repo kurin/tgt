@@ -2,6 +2,7 @@ package scsi
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -26,6 +27,41 @@ func (pg *PortalGroup) Accept() (*Conn, error) {
 
 func (pg *PortalGroup) Close() error {
 	return pg.L.Close()
+}
+
+func (pg *PortalGroup) Attach(c *Conn) (*Session, error) {
+	s, err := NewSession()
+	if err != nil {
+		return nil, err
+	}
+	s.conn = c
+	if !c.Recv() {
+		return nil, fmt.Errorf("no packets on new connection %v", c)
+	}
+	m := c.Msg()
+	kv := packet.ParseKVText(m.RawData)
+	fmt.Printf("%#v\n", kv)
+	tname := kv["TargetName"]
+	if tname == "" {
+		return nil, errors.New("no target name given")
+	}
+	var tgt *Target
+	for _, t := range pg.Targets {
+		if t.Name == tname {
+			tgt = t
+		}
+	}
+	if tgt == nil {
+		return nil, fmt.Errorf("no target: %v", tname)
+	}
+	s.target = tgt
+	go func() {
+		s.messages <- m
+		for c.Recv() {
+			s.messages <- c.Msg()
+		}
+	}()
+	return s, nil
 }
 
 type Conn struct {
@@ -66,7 +102,7 @@ func (c *Conn) Msg() *packet.Message {
 func (c *Conn) Send(msg *packet.Message) error {
 	b := msg.Bytes()
 	///
-	fmt.Printf("=== outgoing msglen: %d", len(b))
+	fmt.Printf("=== outgoing msglen: %d\n", len(b))
 	m, errr := packet.Next(bytes.NewReader(b))
 	if errr != nil {
 		return fmt.Errorf("rawr: %v", errr)

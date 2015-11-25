@@ -8,20 +8,6 @@ import (
 	"github.com/kurin/tgt/packet"
 )
 
-func Attach(c *Conn) (*Session, error) {
-	s, err := NewSession()
-	if err != nil {
-		return nil, err
-	}
-	s.conn = c
-	go func() {
-		for c.Recv() {
-			s.messages <- c.Msg()
-		}
-	}()
-	return s, nil
-}
-
 // Session is an iSCSI session.
 type Session struct {
 	isid uint64
@@ -30,7 +16,6 @@ type Session struct {
 	target   *Target
 	conn     *Conn
 	messages chan *packet.Message
-	auth     *authHandler
 }
 
 // New creates a new session.
@@ -46,7 +31,6 @@ func NewSession() (*Session, error) {
 	return &Session{
 		tsih:     tsih,
 		messages: make(chan *packet.Message),
-		auth:     &authHandler{},
 	}, nil
 }
 
@@ -62,7 +46,9 @@ func (s *Session) Run() error {
 func (s *Session) dispatch(m *packet.Message) error {
 	switch m.OpCode {
 	case packet.OpLoginReq:
-		return s.auth.handle(s, m)
+		return s.target.handleAuth(s, m)
+	case packet.OpSCSICmd:
+		return s.target.handleSCSICmd(s, m)
 	}
 	return fmt.Errorf("no handler for op %v", m.OpCode)
 }

@@ -95,6 +95,11 @@ type Message struct {
 	CDB             []byte
 	Status          Status
 	SCSIResponse    Response
+
+	// Data-In
+	HasStatus    bool
+	DataSN       uint32
+	BufferOffset uint32
 }
 
 func (m *Message) Bytes() []byte {
@@ -103,6 +108,8 @@ func (m *Message) Bytes() []byte {
 		return m.loginRespBytes()
 	case OpSCSIResp:
 		return m.scsiCmdRespBytes()
+	case OpSCSIIn:
+		return m.dataInBytes()
 	}
 	return nil
 }
@@ -172,14 +179,14 @@ func Next(r io.Reader) (*Message, error) {
 		if _, err := io.ReadFull(r, data); err != nil {
 			return nil, err
 		}
-		m.RawData = data
+		m.RawData = data[:m.DataLen]
 	}
 	return m, nil
 }
 
 // parseUint parses the given slice as a network-byte-ordered integer.  If
 // there are more than 8 bytes in data, it overflows.
-func parseUint(data []byte) uint64 {
+func ParseUint(data []byte) uint64 {
 	var out uint64
 	for i := 0; i < len(data); i++ {
 		out += uint64(data[len(data)-i-1]) << uint(8*i)
@@ -187,7 +194,7 @@ func parseUint(data []byte) uint64 {
 	return out
 }
 
-func marshalUint64(i uint64) []byte {
+func MarshalUint64(i uint64) []byte {
 	var data []byte
 	for j := 0; j < 8; j++ {
 		b := byte(i >> uint(8*(7-j)) & 0xff)
@@ -206,17 +213,17 @@ func parseHeader(data []byte) (*Message, error) {
 	m.OpCode = OpCode(data[0] & 0x3f)
 	m.Final = 0x80&data[1] == 0x80
 	m.AHSLen = int(data[4]) * 4
-	m.DataLen = int(parseUint(data[5:8]))
-	m.TaskTag = uint32(parseUint(data[16:20]))
+	m.DataLen = int(ParseUint(data[5:8]))
+	m.TaskTag = uint32(ParseUint(data[16:20]))
 	switch m.OpCode {
 	case OpSCSICmd:
 		m.LUN = uint8(data[9])
-		m.ExpectedDataLen = uint32(parseUint(data[20:24]))
-		m.CmdSN = uint32(parseUint(data[24:28]))
+		m.ExpectedDataLen = uint32(ParseUint(data[20:24]))
+		m.CmdSN = uint32(ParseUint(data[24:28]))
 		m.Read = data[1]&0x40 == 0x40
 		m.Write = data[1]&0x20 == 0x20
 		m.CDB = data[32:48]
-		m.ExpStatSN = uint32(parseUint(data[28:32]))
+		m.ExpStatSN = uint32(ParseUint(data[28:32]))
 	case OpSCSIResp:
 	case OpLoginReq:
 		m.Transit = m.Final
@@ -227,11 +234,11 @@ func parseHeader(data []byte) (*Message, error) {
 		}
 		m.CSG = Stage(data[1]&0xc) >> 2
 		m.NSG = Stage(data[1] & 0x3)
-		m.ISID = uint64(parseUint(data[8:14]))
-		m.TSIH = uint16(parseUint(data[14:16]))
-		m.ConnID = uint16(parseUint(data[20:22]))
-		m.CmdSN = uint32(parseUint(data[24:28]))
-		m.ExpStatSN = uint32(parseUint(data[28:32]))
+		m.ISID = uint64(ParseUint(data[8:14]))
+		m.TSIH = uint16(ParseUint(data[14:16]))
+		m.ConnID = uint16(ParseUint(data[20:22]))
+		m.CmdSN = uint32(ParseUint(data[24:28]))
+		m.ExpStatSN = uint32(ParseUint(data[28:32]))
 	case OpLoginResp:
 		m.Transit = m.Final
 		m.Cont = data[1]&0x40 == 0x40
@@ -241,9 +248,9 @@ func parseHeader(data []byte) (*Message, error) {
 		}
 		m.CSG = Stage(data[1]&0xc) >> 2
 		m.NSG = Stage(data[1] & 0x3)
-		m.StatSN = uint32(parseUint(data[24:28]))
-		m.ExpCmdSN = uint32(parseUint(data[28:32]))
-		m.MaxCmdSN = uint32(parseUint(data[32:36]))
+		m.StatSN = uint32(ParseUint(data[24:28]))
+		m.ExpCmdSN = uint32(ParseUint(data[28:32]))
+		m.MaxCmdSN = uint32(ParseUint(data[32:36]))
 		m.StatusClass = uint8(data[36])
 		m.StatusDetail = uint8(data[37])
 	}

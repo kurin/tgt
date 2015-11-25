@@ -18,15 +18,12 @@ func (fs *FakeSCSI) ReadCapacity10(bool, uint32) (lba, blocksize uint32, err err
 }
 
 func main() {
-	lun := &scsi.LUN{
-		// LUN specific options
-		Device: &FakeSCSI{},
-	}
 
 	t := &scsi.Target{
 		// Target-specific options
-		LUNS: []*scsi.LUN{
-			lun, // lun 0
+		Name: "a",
+		LUNs: []scsi.Interface{
+			&FakeSCSI{}, // lun 0
 		},
 	}
 
@@ -49,11 +46,15 @@ func main() {
 			log.Println(err)
 			continue
 		}
-		session, err := scsi.Attach(conn)
+		session, err := pg.Attach(conn)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
-		go session.Run()
+		go func() {
+			if err := session.Run(); err != nil {
+				log.Println(err)
+			}
+		}()
 	}
 }

@@ -14,13 +14,13 @@ func (m *Message) scsiCmdRespBytes() []byte {
 	for i := 0; i < 3*4; i++ {
 		buf.WriteByte(0x00)
 	}
-	buf.Write(marshalUint64(uint64(m.TaskTag))[4:])
+	buf.Write(MarshalUint64(uint64(m.TaskTag))[4:])
 	for i := 0; i < 4; i++ {
 		buf.WriteByte(0x00)
 	}
-	buf.Write(marshalUint64(uint64(m.StatSN))[4:])
-	buf.Write(marshalUint64(uint64(m.ExpCmdSN))[4:])
-	buf.Write(marshalUint64(uint64(m.MaxCmdSN))[4:])
+	buf.Write(MarshalUint64(uint64(m.StatSN))[4:])
+	buf.Write(MarshalUint64(uint64(m.ExpCmdSN))[4:])
+	buf.Write(MarshalUint64(uint64(m.MaxCmdSN))[4:])
 	for i := 0; i < 3*4; i++ {
 		buf.WriteByte(0x00)
 	}
