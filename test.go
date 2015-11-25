@@ -17,6 +17,10 @@ func (fs *FakeSCSI) ReadCapacity10(bool, uint32) (lba, blocksize uint32, err err
 	return 0xffff, 0x200, nil
 }
 
+func (fs *FakeSCSI) ReadCapacity16(bool, uint64) (*scsi.Capacity, error) {
+	return &scsi.Capacity{}, nil
+}
+
 func main() {
 
 	t := &scsi.Target{
