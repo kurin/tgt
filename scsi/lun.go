@@ -53,10 +53,95 @@ func (c *Capacity) bytes() []byte {
 	return buf.Bytes()
 }
 
+type InquiryData struct {
+	PeripheralQualifier int
+	PeripheralType      int
+	Removable           bool
+	Version             int
+	SupportsACA         bool
+	Hierarchical        bool
+	SupportsSCC         bool
+	HasACC              bool
+	TargetGroupSupport  int
+	ThirdPartyCopy      bool
+	Protect             bool
+	EnclosureServices   bool
+	Multiport           bool
+	MediaChanger        bool
+	Vendor              [8]byte
+	Product             [16]byte
+	RevisionLevel       [4]byte
+	SerialNumber        uint64
+}
+
+func (id *InquiryData) bytes() []byte {
+	buf := &bytes.Buffer{}
+	var b byte
+	b = (uint8(id.PeripheralQualifier) << 5) & 0xe0
+	b |= uint8(id.PeripheralType) & 0x1f
+	buf.WriteByte(b)
+	b = 0
+	if id.Removable {
+		b = 0x80
+	}
+	buf.WriteByte(b)
+	buf.WriteByte(byte(id.Version))
+	b = 0x02
+	if id.SupportsACA {
+		b |= 0x20
+	}
+	if id.Hierarchical {
+		b |= 0x10
+	}
+	buf.WriteByte(b)
+	buf.WriteByte(0x00)
+	// byte 5
+	b = 0
+	if id.SupportsSCC {
+		b |= 0x80
+	}
+	if id.HasACC {
+		b |= 0x40
+	}
+	b |= byte(id.TargetGroupSupport) << 4 & 0x30
+	if id.ThirdPartyCopy {
+		b |= 0x08
+	}
+	if id.Protect {
+		b |= 0x01
+	}
+	buf.WriteByte(b)
+	// byte 6
+	b = 0
+	if id.EnclosureServices {
+		b |= 0x40
+	}
+	if id.Multiport {
+		b |= 0x10
+	}
+	if id.MediaChanger {
+		b |= 0x08
+	}
+	buf.WriteByte(b)
+	buf.WriteByte(0x02)
+	buf.Write(id.Vendor[:])
+	buf.Write(id.Product[:])
+	buf.Write(id.RevisionLevel[:])
+	buf.Write(packet.MarshalUint64(id.SerialNumber))
+	for i := 0; i < 12; i++ {
+		buf.WriteByte(0x00)
+	}
+	data := buf.Bytes()
+	data[4] = byte(len(data) - 4)
+	return data
+}
+
 type Interface interface {
 	TestUnitReady() (ready bool, err error)
 	ReadCapacity10(pmi bool, lba uint32) (rlba, blocksize uint32, err error)
 	ReadCapacity16(pmi bool, lba uint64) (*Capacity, error)
+	Inquiry() (*InquiryData, error)
+	VitalProductData(code byte) ([]byte, error)
 }
 
 type Target struct {
@@ -126,7 +211,8 @@ func (t *Target) handleSCSICmd(s *Session, m *packet.Message) error {
 		resp.OpCode = packet.OpSCSIIn
 		resp.HasStatus = true
 		sa := m.CDB[1] & 0x1f
-		if sa == 0x10 {
+		switch sa {
+		case 0x10:
 			pmi := m.CDB[14]&0x01 == 0x01
 			lba := packet.ParseUint(m.CDB[2:10])
 			capacity, err := t.LUNs[lun].ReadCapacity16(pmi, lba)
@@ -136,8 +222,32 @@ func (t *Target) handleSCSICmd(s *Session, m *packet.Message) error {
 				break
 			}
 			resp.RawData = capacity.bytes()
+		}
+	case 0x12:
+		resp.OpCode = packet.OpSCSIIn
+		resp.HasStatus = true
+		alloc := int(packet.ParseUint(m.CDB[3:5]))
+		evpd := m.CDB[1]&0x01 == 0x01
+		if evpd {
+			vpd, err := t.LUNs[lun].VitalProductData(m.CDB[2])
+			if err != nil {
+				resp.Status = 0x02
+				resp.SCSIResponse = 0x01
+				break
+			}
+			resp.RawData = vpd
+			if len(vpd) >= alloc {
+				resp.RawData = resp.RawData[:alloc]
+			}
 			break
 		}
+		inq, err := t.LUNs[lun].Inquiry()
+		if err != nil {
+			resp.Status = 0x02
+			resp.SCSIResponse = 0x01
+			break
+		}
+		resp.RawData = inq.bytes()[:alloc]
 	default:
 		return fmt.Errorf("no handler for CDB command %x", opCode)
 	}

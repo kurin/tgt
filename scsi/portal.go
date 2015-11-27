@@ -40,7 +40,6 @@ func (pg *PortalGroup) Attach(c *Conn) (*Session, error) {
 	}
 	m := c.Msg()
 	kv := packet.ParseKVText(m.RawData)
-	fmt.Printf("%#v\n", kv)
 	tname := kv["TargetName"]
 	if tname == "" {
 		return nil, errors.New("no target name given")
