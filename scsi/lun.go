@@ -8,13 +8,6 @@ import (
 	"github.com/kurin/tgt/packet"
 )
 
-type scsiError struct {
-	status   byte
-	response byte
-	sense    byte
-	code     string
-}
-
 type Capacity struct {
 	LBA                  uint64
 	Blocksize            uint32

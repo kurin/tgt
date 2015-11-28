@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 
@@ -39,7 +38,7 @@ func (fs *FakeSCSI) VitalProductData(code byte) ([]byte, error) {
 		data[3] = 0x3c
 		return data, nil
 	}
-	return nil, fmt.Errorf("unimplemented VPD code page: %x\n", code)
+	return nil, scsi.ErrUnsupportedCommand
 }
 
 func main() {
