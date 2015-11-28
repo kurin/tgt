@@ -141,6 +141,19 @@ type Target struct {
 	LUNs []Interface
 }
 
+func (t *Target) handleLogout(s *Session, m *packet.Message) error {
+	resp := &packet.Message{
+		OpCode:  packet.OpLogoutResp,
+		StatSN:  m.ExpStatSN,
+		TaskTag: m.TaskTag,
+	}
+	if err := s.Send(resp); err != nil {
+		s.Close()
+		return err
+	}
+	return s.Close()
+}
+
 func (t *Target) handleAuth(s *Session, m *packet.Message) error {
 	if !m.Cont && m.NSG == packet.FullFeaturePhase {
 		resp := &packet.Message{

@@ -106,6 +106,8 @@ func (m *Message) Bytes() []byte {
 	switch m.OpCode {
 	case OpLoginResp:
 		return m.loginRespBytes()
+	case OpLogoutResp:
+		return m.logoutRespBytes()
 	case OpSCSIResp:
 		return m.scsiCmdRespBytes()
 	case OpSCSIIn:

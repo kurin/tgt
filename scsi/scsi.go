@@ -18,6 +18,11 @@ type Session struct {
 	messages chan *packet.Message
 }
 
+func (s *Session) Close() error {
+	close(s.messages)
+	return s.conn.Close()
+}
+
 // New creates a new session.
 func NewSession() (*Session, error) {
 	var tsih uint16
@@ -36,7 +41,10 @@ func NewSession() (*Session, error) {
 
 func (s *Session) Run() error {
 	for {
-		m := s.Recv()
+		m, ok := <-s.messages
+		if !ok {
+			return nil
+		}
 		if err := s.dispatch(m); err != nil {
 			return err
 		}
@@ -49,12 +57,10 @@ func (s *Session) dispatch(m *packet.Message) error {
 		return s.target.handleAuth(s, m)
 	case packet.OpSCSICmd:
 		return s.target.handleSCSICmd(s, m)
+	case packet.OpLogoutReq:
+		return s.target.handleLogout(s, m)
 	}
 	return fmt.Errorf("no handler for op %v", m.OpCode)
-}
-
-func (s *Session) Recv() *packet.Message {
-	return <-s.messages
 }
 
 // Send sends a message to the initiator on the appropriate connection.

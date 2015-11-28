@@ -73,7 +73,7 @@ type Conn struct {
 }
 
 func (c *Conn) Close() error {
-	return c.Close()
+	return c.c.Close()
 }
 
 func (c *Conn) Recv() bool {
