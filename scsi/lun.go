@@ -3,7 +3,6 @@ package scsi
 import (
 	"bytes"
 	"errors"
-	"fmt"
 
 	"github.com/kurin/tgt/packet"
 )
@@ -162,7 +161,7 @@ func (t *Target) handleAuth(s *Session, m *packet.Message) error {
 	return errors.New("can't perform auth")
 }
 
-func (t *Target) handleSCSICmd(s *Session, m *packet.Message) error {
+func (t *Target) handleSCSICmd(s *Session, m *packet.Message) (err error) {
 	opCode := m.CDB[0]
 	lun := int(m.LUN)
 	resp := &packet.Message{
@@ -173,6 +172,11 @@ func (t *Target) handleSCSICmd(s *Session, m *packet.Message) error {
 		ExpCmdSN: m.CmdSN + 1,
 		MaxCmdSN: m.CmdSN + 10,
 	}
+	defer func() {
+		if err == nil {
+			err = s.Send(resp)
+		}
+	}()
 	switch opCode {
 	case 0x00:
 		ready, err := t.LUNs[lun].TestUnitReady()
@@ -222,17 +226,8 @@ func (t *Target) handleSCSICmd(s *Session, m *packet.Message) error {
 		alloc := int(packet.ParseUint(m.CDB[3:5]))
 		evpd := m.CDB[1]&0x01 == 0x01
 		if evpd {
-			vpd, err := t.LUNs[lun].VitalProductData(m.CDB[2])
-			if err != nil {
-				resp.Status = 0x02
-				resp.SCSIResponse = 0x01
-				break
-			}
-			resp.RawData = vpd
-			if len(vpd) >= alloc {
-				resp.RawData = resp.RawData[:alloc]
-			}
-			break
+			t.handleVPD(s, m, resp)
+			return
 		}
 		inq, err := t.LUNs[lun].Inquiry()
 		if err != nil {
@@ -242,7 +237,30 @@ func (t *Target) handleSCSICmd(s *Session, m *packet.Message) error {
 		}
 		resp.RawData = inq.bytes()[:alloc]
 	default:
-		return fmt.Errorf("no handler for CDB command %x", opCode)
+		setError(resp, ErrUnsupportedCommand)
 	}
-	return s.Send(resp)
+	return
+}
+
+func setError(resp *packet.Message, serr SCSIError) {
+	buf := &bytes.Buffer{}
+	data := serr.Bytes()
+	buf.Write(packet.MarshalUint64(uint64(len(data)))[6:])
+	buf.Write(data)
+	resp.RawData = buf.Bytes()
+}
+
+func (t *Target) handleVPD(s *Session, m, resp *packet.Message) {
+	lun := int(m.LUN)
+	alloc := int(packet.ParseUint(m.CDB[3:5]))
+	vpd, err := t.LUNs[lun].VitalProductData(m.CDB[2])
+	if err != nil {
+		resp.Status = 0x02
+		resp.SCSIResponse = 0x01
+		return
+	}
+	resp.RawData = vpd
+	if len(vpd) >= alloc {
+		resp.RawData = resp.RawData[:alloc]
+	}
 }
